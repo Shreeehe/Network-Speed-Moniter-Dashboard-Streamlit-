@@ -54,6 +54,12 @@ SUPABASE_OUTBOX_FILE = getattr(
 )
 SUPABASE_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
 
+# Office identification & dashboard link
+OFFICE_NAME = getattr(
+    config, "OFFICE_NAME", "Old Office" if "old" in str(SUPABASE_TABLE).lower() else "New Office"
+)
+DASHBOARD_URL = getattr(config, "DASHBOARD_URL", "")
+
 IDEAL, LOW, DOWN = "Ideal", "Low", "Totally Down"
 
 CSV_COLUMNS = [
@@ -544,7 +550,7 @@ def run_cycle(note=""):
 # ----------------------------------------------------------------------------
 # E-mail
 # ----------------------------------------------------------------------------
-def send_email(subject, body):
+def send_email(subject, body, html_body=None):
     recipients = [x.strip() for x in config.ALERT_TO if x.strip()]
     cc = [x.strip() for x in config.ALERT_CC if x.strip()]
     all_recipients = recipients + cc
@@ -558,6 +564,8 @@ def send_email(subject, body):
         msg["Cc"] = ", ".join(cc)
     msg["Subject"] = subject
     msg.set_content(body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
 
     for attempt in range(1, config.EMAIL_MAX_RETRIES + 1):
         try:
@@ -588,44 +596,202 @@ def send_email(subject, body):
     return False
 
 
-def alert_body(problem):
-    rows = read_rows_since(problem["start"])
-    return (
-        f"Network alert: {problem['type'].upper()}\n\n"
-        f"Problem started: {problem['start']}\n"
-        f"Expected speed: {config.EXPECTED_SPEED:.2f} Mbps\n"
-        f"Low-speed threshold: {config.ALERT_THRESHOLD:.2f} Mbps\n"
-        f"Ping target: {PING_TARGET}\n\n"
-        f"Recent log (from CSV):\n{format_rows(rows)}\n"
+def _build_html_card(title, title_color, badge_text, badge_bg, badge_color, details, stats):
+    detail_rows = "".join([
+        f'<tr><td style="padding:4px 0; color:#64748b; font-size:14px; width:130px;">{k}:</td>'
+        f'<td style="padding:4px 0; color:#0f172a; font-weight:600; font-size:14px;">{v}</td></tr>'
+        for k, v in details.items()
+    ])
+
+    stat_cols = "".join([
+        f'<td style="background:#f1f5f9; padding:12px; border-radius:8px; text-align:center; width:33%;">'
+        f'<div style="font-size:11px; color:#64748b; font-weight:600; text-transform:uppercase; letter-spacing:0.04em;">{k}</div>'
+        f'<div style="font-size:17px; color:#0f172a; font-weight:700; margin-top:4px;">{v}</div></td>'
+        for k, v in stats.items()
+    ])
+
+    button_html = ""
+    if DASHBOARD_URL:
+        button_html = (
+            f'<div style="margin-top:20px; text-align:center;">'
+            f'<a href="{DASHBOARD_URL}" style="background:#0284c7; color:#ffffff; text-decoration:none; '
+            f'padding:10px 22px; border-radius:6px; font-weight:600; font-size:14px; display:inline-block;">'
+            f'View Live Dashboard &rarr;</a></div>'
+        )
+
+    return f"""<!DOCTYPE html>
+<html>
+<body style="margin:0; padding:16px; background-color:#f8fafc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <div style="max-width:540px; margin:0 auto; background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
+    <div style="padding:16px 20px; border-bottom:1px solid #f1f5f9;">
+      <table style="width:100%;">
+        <tr>
+          <td><h2 style="margin:0; font-size:18px; color:{title_color};">{title}</h2></td>
+          <td style="text-align:right;"><span style="background:{badge_bg}; color:{badge_color}; padding:4px 10px; border-radius:9999px; font-size:11px; font-weight:700; letter-spacing:0.04em;">{badge_text}</span></td>
+        </tr>
+      </table>
+    </div>
+    <div style="padding:18px 20px;">
+      <table style="width:100%; border-collapse:collapse; margin-bottom:16px;">
+        {detail_rows}
+      </table>
+      <table style="width:100%; border-collapse:separate; border-spacing:8px 0; margin-bottom:10px;">
+        <tr>{stat_cols}</tr>
+      </table>
+      {button_html}
+    </div>
+    <div style="padding:10px 20px; background:#f8fafc; border-top:1px solid #f1f5f9; text-align:center; font-size:12px; color:#94a3b8;">
+      Network &amp; Power Monitor &bull; {OFFICE_NAME}
+    </div>
+  </div>
+</body>
+</html>"""
+
+
+def format_alert_email(problem, row):
+    status = problem["type"]
+    is_down = status == DOWN
+    emoji = "🔴" if is_down else "⚠️"
+    status_label = "Totally Down" if is_down else "Low Speed"
+    speed_display = f"{row.get('download_mbps', 0.0)} Mbps"
+
+    subject = f"[{OFFICE_NAME}] {emoji} {status.upper()}: {speed_display}"
+
+    dash_line = f"\n🔗 Live Dashboard: {DASHBOARD_URL}" if DASHBOARD_URL else ""
+    note_line = f"\n• Note:        {row['note']}" if row.get("note") else ""
+    res_line = f"\n• Result URL:  {row['result_url']}" if row.get("result_url") else ""
+
+    text_body = (
+        f"🏢 Location:   {OFFICE_NAME}\n"
+        f"{emoji} Status:     {status_label} (Target: {config.EXPECTED_SPEED:.0f} Mbps | Threshold: {config.ALERT_THRESHOLD:.0f} Mbps)\n"
+        f"⏱️ Started:    {problem['start']}\n\n"
+        f"📊 Current Performance:\n"
+        f"• Download:   {row.get('download_mbps', '-')} Mbps\n"
+        f"• Upload:     {row.get('upload_mbps', '-')} Mbps\n"
+        f"• Ping:       {row.get('ping_avg_ms', '-')} ms (Gateway: {PING_TARGET})"
+        f"{res_line}{note_line}\n"
+        f"{dash_line}"
     )
 
+    badge_bg = "#fee2e2" if is_down else "#fef3c7"
+    badge_color = "#991b1b" if is_down else "#92400e"
+    title_color = "#b91c1c" if is_down else "#b45309"
 
-def recovery_body(problem, row):
-    rows = read_rows_since(problem["start"])
-    extra = ""
-    if not problem["alert_sent"]:
-        extra = ("\nNote: the alert e-mail could not be sent during the problem "
-                 "(no connectivity), so this is the first message.\n")
-    return (
-        f"Network recovered (was: {problem['type']})\n\n"
-        f"Problem started: {problem['start']}\n"
-        f"Recovered at:    {row['timestamp']}\n"
-        f"Duration:        {fmt_duration(problem['start'], row['timestamp'])}\n"
-        f"Current speed:   {row['download_mbps']} Mbps down / {row['upload_mbps']} Mbps up\n"
-        f"{extra}\n"
-        f"Log during the problem (from CSV):\n{format_rows(rows)}\n"
+    details = {
+        "Location": OFFICE_NAME,
+        "Status": f"{status_label} (Threshold: {config.ALERT_THRESHOLD:.0f} Mbps)",
+        "Started": problem["start"],
+    }
+    if row.get("note"):
+        details["Note"] = row["note"]
+
+    stats = {
+        "Download": f"{row.get('download_mbps', '-')} Mbps",
+        "Upload": f"{row.get('upload_mbps', '-')} Mbps",
+        "Ping": f"{row.get('ping_avg_ms', '-')} ms",
+    }
+
+    html_body = _build_html_card(
+        title=f"{emoji} {status_label} Detected",
+        title_color=title_color,
+        badge_text=status.upper(),
+        badge_bg=badge_bg,
+        badge_color=badge_color,
+        details=details,
+        stats=stats,
+    )
+    return subject, text_body, html_body
+
+
+def format_recovery_email(problem, row):
+    duration = fmt_duration(problem["start"], row["timestamp"])
+    speed_display = f"{row.get('download_mbps', 0.0)} Mbps"
+    subject = f"[{OFFICE_NAME}] 🟢 RECOVERED: {speed_display} (Outage: {duration})"
+
+    dash_line = f"\n🔗 Live Dashboard: {DASHBOARD_URL}" if DASHBOARD_URL else ""
+
+    text_body = (
+        f"🏢 Location:   {OFFICE_NAME}\n"
+        f"🟢 Status:     Back to Normal (Ideal)\n"
+        f"⏱️ Recovered:  {row['timestamp']}\n"
+        f"⏳ Duration:   {duration} (was {problem['type']})\n\n"
+        f"📊 Current Performance:\n"
+        f"• Download:   {row.get('download_mbps', '-')} Mbps\n"
+        f"• Upload:     {row.get('upload_mbps', '-')} Mbps\n"
+        f"• Ping:       {row.get('ping_avg_ms', '-')} ms\n"
+        f"{dash_line}"
     )
 
+    details = {
+        "Location": OFFICE_NAME,
+        "Status": "Back to Normal (Ideal)",
+        "Recovered": row["timestamp"],
+        "Duration": f"{duration} (was {problem['type']})",
+    }
+    stats = {
+        "Download": f"{row.get('download_mbps', '-')} Mbps",
+        "Upload": f"{row.get('upload_mbps', '-')} Mbps",
+        "Ping": f"{row.get('ping_avg_ms', '-')} ms",
+    }
 
-def power_body(notice):
-    rows = read_rows_since(notice["off_from"])
-    return (
-        "PC was OFF (power cut / shutdown)\n\n"
-        f"Last seen ON: {notice['off_from']}\n"
-        f"Back ON at:   {notice['off_to']}\n"
-        f"Off duration: {fmt_duration(notice['off_from'], notice['off_to'])}\n\n"
-        f"Log after the outage (from CSV):\n{format_rows(rows)}\n"
+    html_body = _build_html_card(
+        title="🟢 Network Recovered",
+        title_color="#047857",
+        badge_text="RESOLVED",
+        badge_bg="#d1fae5",
+        badge_color="#065f46",
+        details=details,
+        stats=stats,
     )
+    return subject, text_body, html_body
+
+
+def format_power_email(notice, row=None):
+    duration = fmt_duration(notice["off_from"], notice["off_to"])
+    subject = f"[{OFFICE_NAME}] ⚡ POWER RESTORED: PC was OFF for {duration}"
+
+    dash_line = f"\n🔗 Live Dashboard: {DASHBOARD_URL}" if DASHBOARD_URL else ""
+
+    dl = row.get("download_mbps", "-") if row else "-"
+    ul = row.get("upload_mbps", "-") if row else "-"
+    ping = row.get("ping_avg_ms", "-") if row else "-"
+
+    text_body = (
+        f"🏢 Location:     {OFFICE_NAME}\n"
+        f"⚡ Event:        Power Restored & System Back Online\n"
+        f"🔌 Last Seen ON: {notice['off_from']}\n"
+        f"💡 Back Online:  {notice['off_to']}\n"
+        f"⏳ Total OFF:    {duration}\n\n"
+        f"📊 Current Performance:\n"
+        f"• Download:     {dl} Mbps\n"
+        f"• Upload:       {ul} Mbps\n"
+        f"• Ping:         {ping} ms\n"
+        f"{dash_line}"
+    )
+
+    details = {
+        "Location": OFFICE_NAME,
+        "Event": "Power Restored & System Back Online",
+        "Last Seen ON": notice["off_from"],
+        "Back Online": notice["off_to"],
+        "Total OFF": duration,
+    }
+    stats = {
+        "Download": f"{dl} Mbps",
+        "Upload": f"{ul} Mbps",
+        "Ping": f"{ping} ms",
+    }
+
+    html_body = _build_html_card(
+        title="⚡ Power Restored",
+        title_color="#334155",
+        badge_text="ONLINE",
+        badge_bg="#e0f2fe",
+        badge_color="#0369a1",
+        details=details,
+        stats=stats,
+    )
+    return subject, text_body, html_body
 
 
 # ----------------------------------------------------------------------------
@@ -639,9 +805,8 @@ def process(row, state):
     # Pending power-outage notice (set at startup after a power cut)
     notice = state["power_notice"]
     if notice and can_email:
-        subject = (f"POWER OFF: PC was off {notice['off_from']} to {notice['off_to']} "
-                   f"({fmt_duration(notice['off_from'], notice['off_to'])})")
-        if send_email(subject, power_body(notice)):
+        subject, body, html_body = format_power_email(notice, row)
+        if send_email(subject, body, html_body):
             state["power_notice"] = None
 
     if status in (LOW, DOWN):
@@ -656,8 +821,8 @@ def process(row, state):
             logging.warning("Problem state: %s (since %s)", status, problem["start"])
 
         if not problem["alert_sent"] and can_email:
-            subject = f"NETWORK ALERT: {status} ({row['download_mbps']} Mbps)"
-            if send_email(subject, alert_body(problem)):
+            subject, body, html_body = format_alert_email(problem, row)
+            if send_email(subject, body, html_body):
                 problem["alert_sent"] = True
 
     elif problem is not None:  # status is Ideal and there was a problem
@@ -665,8 +830,8 @@ def process(row, state):
         if not getattr(config, "SEND_RECOVERY_EMAIL", True):
             state["problem"] = None
         else:
-            subject = f"NETWORK RECOVERED from {problem['type']}: {row['download_mbps']} Mbps"
-            if send_email(subject, recovery_body(problem, row)):
+            subject, body, html_body = format_recovery_email(problem, row)
+            if send_email(subject, body, html_body):
                 state["problem"] = None
             # else: keep the problem record, the mail is retried next cycle
 

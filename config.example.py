@@ -64,6 +64,12 @@ ALERT_CC = [
     # "cc_recipient@example.com",
 ]
 
+# Office display name used in email alert subjects & cards (e.g. "New Office" or "Old Office")
+OFFICE_NAME = "New Office"
+
+# Optional: Streamlit Community Cloud URL shown at the bottom of alert emails
+DASHBOARD_URL = "https://your-app-name.streamlit.app"
+
 
 # ==============================
 # EMAIL RETRIES
