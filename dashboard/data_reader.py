@@ -120,7 +120,9 @@ def process_dataframe(df):
     # Parse timestamps to Asia/Kolkata timezone
     df["datetime"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(KOLKATA_TZ)
     df = df.sort_values("datetime").reset_index(drop=True)
-    df["local_time"] = df["datetime"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    # 12-hour formatted local timestamps
+    df["local_time"] = df["datetime"].dt.strftime("%Y-%m-%d %I:%M:%S %p")
+    df["time_12h"] = df["datetime"].dt.strftime("%I:%M:%S %p")
 
     # Numeric conversions
     numeric_cols = [

@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import data_reader
 
 KOLKATA_TZ = ZoneInfo("Asia/Kolkata")
-TS_FMT = "%Y-%m-%d %H:%M:%S"
+TS_FMT = "%Y-%m-%d %I:%M:%S %p"
 
 st.set_page_config(
     page_title="Network & Power Monitor",
@@ -28,79 +28,81 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------------------------------
-# Custom CSS for Premium Design & Responsive Layout
+# Custom CSS for Adaptive Light/Dark Theme & Clean Layout
 # ----------------------------------------------------------------------------
 st.markdown(
     """
     <style>
-    /* Metric Cards */
+    /* Metric Cards - Adaptive to both Light and Dark Themes */
     .metric-card {
-        background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: rgba(125, 125, 125, 0.07);
+        border: 1px solid rgba(125, 125, 125, 0.16);
         border-radius: 12px;
         padding: 16px 20px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        margin-bottom: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        margin-bottom: 8px;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .metric-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
     }
     .metric-title {
-        font-size: 0.82rem;
-        font-weight: 600;
-        color: #94a3b8;
+        font-size: 0.76rem;
+        font-weight: 700;
+        opacity: 0.72;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
         margin-bottom: 4px;
     }
     .metric-value {
-        font-size: 1.75rem;
+        font-size: 1.85rem;
         font-weight: 800;
-        color: #f8fafc;
         line-height: 1.2;
     }
     .metric-sub {
-        font-size: 0.78rem;
-        color: #64748b;
+        font-size: 0.76rem;
+        opacity: 0.65;
         margin-top: 4px;
     }
 
-    /* Live Status Banner Cards */
+    /* Live Status Banner Cards - High-contrast text across all themes */
     .status-banner {
         border-radius: 14px;
-        padding: 22px 28px;
-        margin-bottom: 24px;
-        display: flex;
-        flex-direction: column;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        padding: 20px 26px;
+        margin-bottom: 18px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+        color: #ffffff !important;
+    }
+    .status-banner h1, .status-banner div, .status-banner span, .status-banner strong {
+        color: #ffffff !important;
     }
     .status-banner-ideal {
         background: linear-gradient(135deg, #064e3b 0%, #065f46 60%, #047857 100%);
-        color: #ecfdf5;
         border-color: #10b981;
     }
     .status-banner-low {
         background: linear-gradient(135deg, #78350f 0%, #92400e 60%, #b45309 100%);
-        color: #fffbeb;
         border-color: #f59e0b;
     }
     .status-banner-down {
         background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 60%, #b91c1c 100%);
-        color: #fef2f2;
         border-color: #ef4444;
     }
     .status-banner-off {
         background: linear-gradient(135deg, #1e293b 0%, #334155 60%, #475569 100%);
-        color: #f1f5f9;
         border-color: #64748b;
     }
     .status-badge {
         display: inline-block;
         padding: 4px 12px;
         border-radius: 9999px;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         font-weight: 700;
         letter-spacing: 0.05em;
         text-transform: uppercase;
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.22);
     }
 
     /* Stale Alert Banner */
@@ -108,11 +110,14 @@ st.markdown(
         background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
         border: 2px solid #f87171;
         border-radius: 12px;
-        padding: 18px 22px;
-        margin-bottom: 24px;
-        color: #ffffff;
+        padding: 16px 22px;
+        margin-bottom: 18px;
+        color: #ffffff !important;
         font-weight: 500;
-        box-shadow: 0 6px 20px rgba(220, 38, 38, 0.3);
+        box-shadow: 0 6px 18px rgba(220, 38, 38, 0.25);
+    }
+    .stale-alert h3, .stale-alert div, .stale-alert strong {
+        color: #ffffff !important;
     }
     </style>
     """,
@@ -382,7 +387,7 @@ last_updated_str = "Unknown"
 
 if newest_dt:
     elapsed_seconds = max(0, (now_kolkata - newest_dt).total_seconds())
-    last_updated_str = newest_dt.strftime("%Y-%m-%d %H:%M:%S")
+    last_updated_str = newest_dt.strftime("%Y-%m-%d %I:%M:%S %p")
     # If now - newest ts > 12 minutes (720 seconds), display prominent red banner
     if elapsed_seconds > 720:
         is_stale = True
@@ -507,14 +512,14 @@ for _, r in off_rows.iterrows():
 
 total_off_str = format_seconds_to_str(total_off_s)
 
-k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1, k2, k3, k4 = st.columns(4)
 with k1:
     st.markdown(
         f"""
         <div class="metric-card">
-            <div class="metric-title">Uptime % (Ideal)</div>
+            <div class="metric-title">Uptime (Ideal)</div>
             <div class="metric-value">{uptime_pct:.1f}%</div>
-            <div class="metric-sub">{ideal_checks} / {total_checks} checks</div>
+            <div class="metric-sub">{ideal_checks} of {total_checks} checks normal</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -525,7 +530,7 @@ with k2:
         <div class="metric-card">
             <div class="metric-title">Avg Download</div>
             <div class="metric-value">{avg_dl:.1f} <span style="font-size: 1rem;">Mbps</span></div>
-            <div class="metric-sub">Target: 100 Mbps</div>
+            <div class="metric-sub">Expected: 100 Mbps &bull; Alert: &lt; 85</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -536,40 +541,21 @@ with k3:
         <div class="metric-card">
             <div class="metric-title">Avg Upload</div>
             <div class="metric-value">{avg_ul:.1f} <span style="font-size: 1rem;">Mbps</span></div>
-            <div class="metric-sub">Target: 100 Mbps</div>
+            <div class="metric-sub">Expected: 100 Mbps</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 with k4:
+    outage_sub = f"{longest_outage_str} max outage"
+    if total_off_s > 0:
+        outage_sub += f" &bull; {total_off_str} PC off"
     st.markdown(
         f"""
         <div class="metric-card">
-            <div class="metric-title">Outages</div>
+            <div class="metric-title">Disruptions</div>
             <div class="metric-value">{num_outages}</div>
-            <div class="metric-sub">Disruption episodes</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with k5:
-    st.markdown(
-        f"""
-        <div class="metric-card">
-            <div class="metric-title">Longest Outage</div>
-            <div class="metric-value">{longest_outage_str}</div>
-            <div class="metric-sub">Max consecutive down</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-with k6:
-    st.markdown(
-        f"""
-        <div class="metric-card">
-            <div class="metric-title">Total Time OFF</div>
-            <div class="metric-value">{total_off_str}</div>
-            <div class="metric-sub">{len(off_rows)} power cuts</div>
+            <div class="metric-sub">{outage_sub}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -578,240 +564,239 @@ with k6:
 st.write("")
 
 # ----------------------------------------------------------------------------
-# 4. Download and Upload Line Chart (Plotly)
+# 4. Clean, Uncluttered Tabbed Views
 # ----------------------------------------------------------------------------
-st.subheader("📈 Bandwidth History (Download & Upload)")
+tab_speed, tab_outage, tab_data = st.tabs([
+    "📈 Bandwidth & Latency",
+    "⚠️ Outages & Power Cuts",
+    "📋 Raw Log & Export",
+])
 
-fig_speed = go.Figure()
+with tab_speed:
+    fig_speed = go.Figure()
 
-fig_speed.add_trace(
-    go.Scatter(
-        x=df["datetime"],
-        y=df["download_mbps"],
-        mode="lines",
-        name="Download (Mbps)",
-        line=dict(color="#38bdf8", width=2.2),
-        hovertemplate="<b>Download</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|%Y-%m-%d %H:%M}<extra></extra>",
-    )
-)
-
-fig_speed.add_trace(
-    go.Scatter(
-        x=df["datetime"],
-        y=df["upload_mbps"],
-        mode="lines",
-        name="Upload (Mbps)",
-        line=dict(color="#c084fc", width=2.0),
-        hovertemplate="<b>Upload</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|%Y-%m-%d %H:%M}<extra></extra>",
-    )
-)
-
-# Reference Lines: Alert Threshold (85 Mbps) and Expected Speed (100 Mbps)
-fig_speed.add_hline(
-    y=100.0,
-    line_dash="dot",
-    line_color="#10b981",
-    line_width=1.5,
-    annotation_text="Expected Speed (100 Mbps)",
-    annotation_position="top left",
-)
-
-fig_speed.add_hline(
-    y=85.0,
-    line_dash="dash",
-    line_color="#ef4444",
-    line_width=1.5,
-    annotation_text="Alert Threshold (85 Mbps)",
-    annotation_position="bottom left",
-)
-
-fig_speed.update_layout(
-    margin=dict(l=20, r=20, t=30, b=20),
-    height=380,
-    hovermode="x unified",
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-    xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
-    yaxis=dict(title="Speed (Mbps)", showgrid=True, gridcolor="rgba(255,255,255,0.08)", rangemode="tozero"),
-)
-st.plotly_chart(fig_speed, use_container_width=True)
-
-# ----------------------------------------------------------------------------
-# 5. Status Timeline with Blackout Gap Detection (> 7m)
-# ----------------------------------------------------------------------------
-st.subheader("⏱️ Status Timeline & Blackout Gaps")
-
-timeline_items = []
-prev_dt = None
-
-for _, row in df.iterrows():
-    curr_dt = row["datetime"]
-    if prev_dt is not None:
-        delta_s = (curr_dt - prev_dt).total_seconds()
-        if delta_s > 420:  # Gap of more than 7 minutes
-            gap_center = prev_dt + timedelta(seconds=delta_s / 2)
-            timeline_items.append({
-                "datetime": gap_center,
-                "status_label": "No Data / Blackout",
-                "color": "#64748b",
-                "download_mbps": 0.0,
-                "note": f"Data gap of {format_seconds_to_str(delta_s)}",
-            })
-
-    if row.get("computer_status") == "OFF":
-        label = "Power Cut (OFF)"
-        color = "#334155"
-    else:
-        st_val = row.get("network_status", "Ideal")
-        label = st_val
-        if st_val == "Ideal":
-            color = "#10b981"
-        elif st_val == "Low":
-            color = "#f59e0b"
-        else:
-            color = "#ef4444"
-
-    timeline_items.append({
-        "datetime": curr_dt,
-        "status_label": label,
-        "color": color,
-        "download_mbps": row.get("download_mbps", 0.0),
-        "note": row.get("note", ""),
-    })
-    prev_dt = curr_dt
-
-tl_df = pd.DataFrame(timeline_items)
-color_map = {
-    "Ideal": "#10b981",
-    "Low": "#f59e0b",
-    "Totally Down": "#ef4444",
-    "Power Cut (OFF)": "#475569",
-    "No Data / Blackout": "#94a3b8",
-}
-
-fig_timeline = px.scatter(
-    tl_df,
-    x="datetime",
-    y="status_label",
-    color="status_label",
-    color_discrete_map=color_map,
-    category_orders={"status_label": ["Ideal", "Low", "Totally Down", "Power Cut (OFF)", "No Data / Blackout"]},
-    hover_data={"datetime": "|%Y-%m-%d %H:%M", "download_mbps": ":.2f", "note": True},
-    height=250,
-)
-fig_timeline.update_traces(marker=dict(size=8, symbol="square"))
-fig_timeline.update_layout(
-    margin=dict(l=20, r=20, t=10, b=20),
-    xaxis=dict(title="", showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
-    yaxis=dict(title="", categoryorder="array", categoryarray=["No Data / Blackout", "Power Cut (OFF)", "Totally Down", "Low", "Ideal"]),
-    showlegend=True,
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-)
-st.plotly_chart(fig_timeline, use_container_width=True)
-
-# ----------------------------------------------------------------------------
-# 6. Ping Latency & Packet Loss
-# ----------------------------------------------------------------------------
-st.subheader("📶 Ping Latency & Packet Loss")
-
-p_c1, p_c2 = st.columns(2)
-
-with p_c1:
-    fig_ping = go.Figure()
-    fig_ping.add_trace(
+    fig_speed.add_trace(
         go.Scatter(
             x=df["datetime"],
-            y=df["ping_avg_ms"],
+            y=df["download_mbps"],
             mode="lines",
-            name="Ping Latency (ms)",
-            line=dict(color="#f97316", width=2),
-            hovertemplate="<b>Ping Latency</b>: %{y} ms<br><b>Time</b>: %{x|%Y-%m-%d %H:%M}<extra></extra>",
+            name="Download (Mbps)",
+            line=dict(color="#38bdf8", width=2.2),
+            hovertemplate="<b>Download</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|%b %d, %I:%M %p}<extra></extra>",
         )
     )
-    fig_ping.update_layout(
-        title="Ping Latency to Gateway (192.168.51.1)",
-        margin=dict(l=20, r=20, t=40, b=20),
-        height=300,
-        xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
-        yaxis=dict(title="Latency (ms)", rangemode="tozero", showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
-    )
-    st.plotly_chart(fig_ping, use_container_width=True)
 
-with p_c2:
-    fig_loss = go.Figure()
-    fig_loss.add_trace(
-        go.Bar(
+    fig_speed.add_trace(
+        go.Scatter(
             x=df["datetime"],
-            y=df["ping_loss_percent"],
-            name="Ping Loss %",
-            marker_color="#ef4444",
-            hovertemplate="<b>Packet Loss</b>: %{y:.0f}%<br><b>Time</b>: %{x|%Y-%m-%d %H:%M}<extra></extra>",
+            y=df["upload_mbps"],
+            mode="lines",
+            name="Upload (Mbps)",
+            line=dict(color="#c084fc", width=2.0),
+            hovertemplate="<b>Upload</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|%b %d, %I:%M %p}<extra></extra>",
         )
     )
-    fig_loss.update_layout(
-        title="Ping Packet Loss (%)",
-        margin=dict(l=20, r=20, t=40, b=20),
-        height=300,
-        xaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
-        yaxis=dict(title="Loss %", range=[0, 105], showgrid=True, gridcolor="rgba(255,255,255,0.08)"),
+
+    fig_speed.add_hline(
+        y=100.0,
+        line_dash="dot",
+        line_color="#10b981",
+        line_width=1.5,
+        annotation_text="Expected Speed (100 Mbps)",
+        annotation_position="top left",
     )
-    st.plotly_chart(fig_loss, use_container_width=True)
 
-# ----------------------------------------------------------------------------
-# 7. Outage Episodes & Power Cut Table
-# ----------------------------------------------------------------------------
-st.subheader("⚠️ Outage Episodes & Disruption Log")
+    fig_speed.add_hline(
+        y=85.0,
+        line_dash="dash",
+        line_color="#ef4444",
+        line_width=1.5,
+        annotation_text="Alert Threshold (85 Mbps)",
+        annotation_position="bottom left",
+    )
 
-if episodes:
-    ep_rows = []
-    for ep in episodes:
-        ep_rows.append({
-            "Disruption Type": ep["type"],
-            "Start Time": ep["start"].strftime(TS_FMT),
-            "End Time": ep["end"].strftime(TS_FMT),
-            "Duration": ep["duration_str"],
-            "Lowest Download": f"{ep['min_dl']:.2f} Mbps" if ep["type"] != "Power Cut (PC OFF)" else "0.00 Mbps",
-            "Notes / Context": " | ".join(ep["notes"]) if ep["notes"] else "None",
+    fig_speed.update_layout(
+        margin=dict(l=10, r=10, t=30, b=10),
+        height=360,
+        hovermode="x unified",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        xaxis=dict(showgrid=True, gridcolor="rgba(125,125,125,0.15)", tickformat="%b %d\n%I:%M %p"),
+        yaxis=dict(title="Speed (Mbps)", showgrid=True, gridcolor="rgba(125,125,125,0.15)", rangemode="tozero"),
+    )
+    st.plotly_chart(fig_speed, use_container_width=True)
+
+    st.write("")
+    p_c1, p_c2 = st.columns(2)
+
+    with p_c1:
+        fig_ping = go.Figure()
+        fig_ping.add_trace(
+            go.Scatter(
+                x=df["datetime"],
+                y=df["ping_avg_ms"],
+                mode="lines",
+                name="Ping Latency (ms)",
+                line=dict(color="#f97316", width=2),
+                hovertemplate="<b>Ping Latency</b>: %{y} ms<br><b>Time</b>: %{x|%b %d, %I:%M %p}<extra></extra>",
+            )
+        )
+        fig_ping.update_layout(
+            title="Ping Latency to Gateway (192.168.51.1)",
+            margin=dict(l=10, r=10, t=40, b=10),
+            height=280,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(showgrid=True, gridcolor="rgba(125,125,125,0.15)", tickformat="%b %d\n%I:%M %p"),
+            yaxis=dict(title="Latency (ms)", rangemode="tozero", showgrid=True, gridcolor="rgba(125,125,125,0.15)"),
+        )
+        st.plotly_chart(fig_ping, use_container_width=True)
+
+    with p_c2:
+        fig_loss = go.Figure()
+        fig_loss.add_trace(
+            go.Bar(
+                x=df["datetime"],
+                y=df["ping_loss_percent"],
+                name="Ping Loss %",
+                marker_color="#ef4444",
+                hovertemplate="<b>Packet Loss</b>: %{y:.0f}%<br><b>Time</b>: %{x|%b %d, %I:%M %p}<extra></extra>",
+            )
+        )
+        fig_loss.update_layout(
+            title="Ping Packet Loss (%)",
+            margin=dict(l=10, r=10, t=40, b=10),
+            height=280,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            xaxis=dict(showgrid=True, gridcolor="rgba(125,125,125,0.15)", tickformat="%b %d\n%I:%M %p"),
+            yaxis=dict(title="Loss %", range=[0, 105], showgrid=True, gridcolor="rgba(125,125,125,0.15)"),
+        )
+        st.plotly_chart(fig_loss, use_container_width=True)
+
+
+with tab_outage:
+    timeline_items = []
+    prev_dt = None
+
+    for _, row in df.iterrows():
+        curr_dt = row["datetime"]
+        if prev_dt is not None:
+            delta_s = (curr_dt - prev_dt).total_seconds()
+            if delta_s > 420:  # Gap of more than 7 minutes
+                gap_center = prev_dt + timedelta(seconds=delta_s / 2)
+                timeline_items.append({
+                    "datetime": gap_center,
+                    "status_label": "No Data / Blackout",
+                    "color": "#64748b",
+                    "download_mbps": 0.0,
+                    "note": f"Data gap of {format_seconds_to_str(delta_s)}",
+                })
+
+        if row.get("computer_status") == "OFF":
+            label = "Power Cut (OFF)"
+            color = "#334155"
+        else:
+            st_val = row.get("network_status", "Ideal")
+            label = st_val
+            if st_val == "Ideal":
+                color = "#10b981"
+            elif st_val == "Low":
+                color = "#f59e0b"
+            else:
+                color = "#ef4444"
+
+        timeline_items.append({
+            "datetime": curr_dt,
+            "status_label": label,
+            "color": color,
+            "download_mbps": row.get("download_mbps", 0.0),
+            "note": row.get("note", ""),
         })
-    ep_df = pd.DataFrame(ep_rows)
-    st.dataframe(ep_df, use_container_width=True, hide_index=True)
-else:
-    st.success("No network outages or power cuts detected in the selected time range! 🎉")
+        prev_dt = curr_dt
 
-# Detailed list for Power Cut (OFF) events
-if not off_rows.empty:
-    with st.expander(f"⚡ Detailed Power Cut Episodes ({len(off_rows)} recorded)"):
-        off_display = off_rows[["local_time", "note"]].copy()
-        off_display.columns = ["Timestamp (Last Seen ON)", "Event Note"]
-        st.dataframe(off_display, use_container_width=True, hide_index=True)
+    tl_df = pd.DataFrame(timeline_items)
+    color_map = {
+        "Ideal": "#10b981",
+        "Low": "#f59e0b",
+        "Totally Down": "#ef4444",
+        "Power Cut (OFF)": "#475569",
+        "No Data / Blackout": "#94a3b8",
+    }
 
-# ----------------------------------------------------------------------------
-# 8. Raw Data Table with CSV Export
-# ----------------------------------------------------------------------------
-st.subheader("📋 Raw Data Records")
-
-display_cols = [
-    "local_time",
-    "computer_status",
-    "network_status",
-    "download_mbps",
-    "upload_mbps",
-    "ping_status",
-    "ping_avg_ms",
-    "ping_loss_percent",
-    "note",
-]
-available_cols = [c for c in display_cols if c in df.columns]
-raw_display_df = df[available_cols].rename(columns={"local_time": "timestamp"}).sort_values("timestamp", ascending=False)
-
-col_d1, col_d2 = st.columns([4, 1])
-with col_d2:
-    csv_bytes = raw_display_df.to_csv(index=False).encode("utf-8")
-    st.download_button(
-        label="📥 Download CSV",
-        data=csv_bytes,
-        file_name=f"network_monitor_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-        use_container_width=True,
+    fig_timeline = px.scatter(
+        tl_df,
+        x="datetime",
+        y="status_label",
+        color="status_label",
+        color_discrete_map=color_map,
+        category_orders={"status_label": ["Ideal", "Low", "Totally Down", "Power Cut (OFF)", "No Data / Blackout"]},
+        hover_data={"datetime": "|%b %d, %I:%M %p", "download_mbps": ":.2f", "note": True},
+        height=240,
     )
+    fig_timeline.update_traces(marker=dict(size=8, symbol="square"))
+    fig_timeline.update_layout(
+        margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(title="", showgrid=True, gridcolor="rgba(125,125,125,0.15)", tickformat="%b %d\n%I:%M %p"),
+        yaxis=dict(title="", categoryorder="array", categoryarray=["No Data / Blackout", "Power Cut (OFF)", "Totally Down", "Low", "Ideal"]),
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    st.plotly_chart(fig_timeline, use_container_width=True)
 
-st.dataframe(raw_display_df, use_container_width=True, hide_index=True)
+    st.markdown("#### ⚠️ Recorded Disruptions")
+    if episodes:
+        ep_rows = []
+        for ep in episodes:
+            ep_rows.append({
+                "Type": ep["type"],
+                "Start Time (12h)": ep["start"].strftime("%Y-%m-%d %I:%M:%S %p"),
+                "End Time (12h)": ep["end"].strftime("%Y-%m-%d %I:%M:%S %p"),
+                "Duration": ep["duration_str"],
+                "Lowest Speed": f"{ep['min_dl']:.2f} Mbps" if ep["type"] != "Power Cut (PC OFF)" else "0.00 Mbps",
+                "Context": " | ".join(ep["notes"]) if ep["notes"] else "None",
+            })
+        ep_df = pd.DataFrame(ep_rows)
+        st.dataframe(ep_df, use_container_width=True, hide_index=True)
+    else:
+        st.success("No network outages or power cuts detected in the selected time range! 🎉")
+
+    if not off_rows.empty:
+        with st.expander(f"⚡ Detailed Power Cut Log ({len(off_rows)} events)"):
+            off_display = off_rows[["local_time", "note"]].copy()
+            off_display.columns = ["Timestamp (12h)", "Event Details"]
+            st.dataframe(off_display, use_container_width=True, hide_index=True)
+
+
+with tab_data:
+    display_cols = [
+        "local_time",
+        "computer_status",
+        "network_status",
+        "download_mbps",
+        "upload_mbps",
+        "ping_status",
+        "ping_avg_ms",
+        "ping_loss_percent",
+        "note",
+    ]
+    available_cols = [c for c in display_cols if c in df.columns]
+    raw_display_df = df[available_cols].rename(columns={"local_time": "Timestamp (12h)"}).sort_values("Timestamp (12h)", ascending=False)
+
+    col_d1, col_d2 = st.columns([4, 1])
+    with col_d1:
+        st.caption(f"Showing **{len(raw_display_df)}** records for **{office_choice}**.")
+    with col_d2:
+        csv_bytes = raw_display_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Export CSV",
+            data=csv_bytes,
+            file_name=f"network_monitor_{current_table}_{datetime.now().strftime('%Y%m%d_%I%M%p')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+    st.dataframe(raw_display_df, use_container_width=True, hide_index=True)
