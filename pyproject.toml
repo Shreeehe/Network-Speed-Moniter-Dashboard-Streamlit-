@@ -1,0 +1,17 @@
+[project]
+name = "network-speed-monitor-dashboard"
+version = "1.0.0"
+description = "Remote Network & Power Monitor Dashboard powered by Supabase and Streamlit"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit>=1.30.0",
+    "pandas>=2.0.0",
+    "plotly>=5.18.0",
+    "requests>=2.28.0",
+    "tzdata>=2023.3",
+    "watchdog>=3.0.0",
+]
+
+[tool.uv]
+managed = true

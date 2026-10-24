@@ -1,0 +1,34 @@
+# Sensitive configuration with SMTP and GitHub passwords
+config.py
+
+# Logs and runtime data
+logs/
+*.log
+*.csv
+*.jsonl
+
+# Runtime state files
+*.json
+
+# Streamlit secrets (NEVER commit secrets.toml)
+.streamlit/secrets.toml
+
+# Executables & environment files
+speedtest.exe
+*.exe
+.env
+.env.*
+.venv/
+venv/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
