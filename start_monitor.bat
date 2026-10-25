@@ -13,6 +13,8 @@ timeout /t 60 /nobreak >nul
 
 echo [%date% %time%] Starting network_monitor.py... >> logs\bat_launch.log
 
+set PYTHONIOENCODING=utf-8
+
 REM Run python monitor and redirect both stdout and stderr to logs/bat_output.log
 if exist ".venv\Scripts\python.exe" (
     .venv\Scripts\python.exe network_monitor.py >> logs\bat_output.log 2>&1

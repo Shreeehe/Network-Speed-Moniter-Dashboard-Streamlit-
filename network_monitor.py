@@ -31,6 +31,14 @@ from email.message import EmailMessage
 
 import config
 
+# Ensure UTF-8 output on Windows consoles/logs
+for _stream in (sys.stdout, sys.stderr):
+    if _stream and hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
 # ----------------------------------------------------------------------------
 # Settings (optional ones fall back to defaults if not in config.py)
 # ----------------------------------------------------------------------------
@@ -106,12 +114,22 @@ def fmt_duration(start_str, end_str):
 
 def setup_logging():
     os.makedirs(config.LOG_DIRECTORY, exist_ok=True)
+    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+    if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(message)s",
         handlers=[
             logging.FileHandler(config.APP_LOG_FILE, encoding="utf-8"),
-            logging.StreamHandler(),
+            logging.StreamHandler(sys.stdout),
         ],
     )
 
