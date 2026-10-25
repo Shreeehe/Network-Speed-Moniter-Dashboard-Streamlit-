@@ -1,6 +1,8 @@
 # Sensitive configuration with SMTP and GitHub passwords
 config.py
 deploy_old_office/
+deploy_new_office/
+deploy_*/
 *.zip
 
 # Logs and runtime data
