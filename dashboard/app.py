@@ -1,7 +1,7 @@
 """
 app.py - Streamlit Monitoring Dashboard for Network & Power Monitor
-Clean, uncluttered, communication-focused monitoring dashboard optimized for
-desktop & mobile, supporting native Light and Dark themes.
+Clean, communication-focused monitoring dashboard optimized for mobile & desktop,
+defaulting to Today's view, with native Light/Dark theme support and zero sidebar clutter.
 """
 import math
 import os
@@ -28,12 +28,12 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------------------------------
-# Minimal Adaptive CSS (Clean typography, high-contrast banner & mobile polish)
+# Minimal Adaptive CSS (High-contrast status banner & clean typography)
 # ----------------------------------------------------------------------------
 st.markdown(
     """
     <style>
-    /* Clean container borders and padding */
+    /* Clean metric value typography */
     [data-testid="stMetricValue"] {
         font-weight: 700 !important;
         font-size: 1.85rem !important;
@@ -268,19 +268,19 @@ with ctrl_right:
         range_option = st.segmented_control(
             "Time Range",
             options=["Today", "7 Days", "30 Days", "Custom"],
-            default="7 Days",
+            default="Today",  # Always opens in Today's view by default
             label_visibility="collapsed",
         )
     else:
         range_option = st.radio(
             "Time Range",
             options=["Today", "7 Days", "30 Days", "Custom"],
-            index=1,
+            index=0,  # "Today" is default
             horizontal=True,
             label_visibility="collapsed",
         )
     if not range_option:
-        range_option = "7 Days"
+        range_option = "Today"
 
 office_table_map = {
     "🏢 New Office": "network_log",
@@ -338,22 +338,6 @@ latest_row, df, source_label, error_msg = cached_load_data(
     start_iso=start_iso,
     end_iso=end_iso,
 )
-
-# Sidebar with system info & theme note
-with st.sidebar:
-    st.markdown("### 🏢 Office Monitor Info")
-    st.write(f"**Office:** {office_choice}")
-    st.write(f"**Database Table:** `{current_table}`")
-    st.write(f"**Timezone:** Asia/Kolkata (IST)")
-    st.divider()
-    st.markdown("### 🌓 Light / Dark Theme")
-    st.info(
-        "Streamlit supports **Light** and **Dark** mode natively! "
-        "To toggle, click the **three dots (⋮)** in the top-right corner $\\rightarrow$ **Settings** $\\rightarrow$ **Theme**."
-    )
-    if st.button("Clear Cache & Refresh", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
 
 if error_msg and (df is None or df.empty):
     if "PGRST205" in error_msg or "Could not find the table" in error_msg:
@@ -520,7 +504,7 @@ with m1:
         st.metric(
             label="⚡ Network Uptime",
             value=f"{uptime_pct:.1f}%",
-            delta=f"{ideal_checks}/{total_checks} checks normal",
+            delta=f"{ideal_checks}/{total_checks} normal checks",
             help="Percentage of check cycles operating at normal speed (>= 85 Mbps)",
         )
 
@@ -558,10 +542,10 @@ with m4:
 st.write("")
 
 # ----------------------------------------------------------------------------
-# 4. Clean, Communicative Visualizations
+# 4. Communicative Visualizations & Diagnostic Analytics
 # ----------------------------------------------------------------------------
 tab_speed, tab_outage, tab_data = st.tabs([
-    "📈 Bandwidth & Latency",
+    "📈 Bandwidth & Quality",
     "⚠️ Outages & Power Cuts",
     "📋 Raw Log & Export",
 ])
@@ -582,8 +566,9 @@ LAYOUT_COMMON = dict(
 
 
 with tab_speed:
-    st.markdown("#### 🚀 Speed vs Target Plan (100 Mbps)")
-    st.caption("Tracks whether your ISP delivers contract bandwidth. Speed below the dashed red line triggers email alerts.")
+    # 1. Main Bandwidth Over Time Chart
+    st.markdown("#### 🚀 Speed Delivery vs 100 Mbps Contract Plan")
+    st.caption("Continuous 5-minute speed tests. Speed below the dashed red line triggers email alerts.")
 
     fig_speed = go.Figure()
 
@@ -643,7 +628,7 @@ with tab_speed:
 
     fig_speed.update_layout(
         **LAYOUT_COMMON,
-        height=350,
+        height=340,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         yaxis=dict(
@@ -656,8 +641,120 @@ with tab_speed:
     st.plotly_chart(fig_speed, use_container_width=True, config=PLOT_CONFIG)
 
     st.write("")
+
+    # 2. Additional Communicative Visualizations: Hourly Performance & SLA Quality Donut
+    c_vis1, c_vis2 = st.columns(2)
+
+    with c_vis1:
+        st.markdown("#### ⏰ Hourly Speed Performance")
+        st.caption("Average download speed by hour of the day. Highlights peak-hour office slowdowns.")
+
+        # Compute hourly averages
+        df_hourly = df.copy()
+        df_hourly["hour_int"] = df_hourly["datetime"].dt.hour
+        df_hourly["hour_label"] = df_hourly["datetime"].dt.strftime("%I %p").str.lstrip("0")
+        hourly_grp = (
+            df_hourly.groupby(["hour_int", "hour_label"], as_index=False)
+            .agg({"download_mbps": "mean", "upload_mbps": "mean"})
+            .sort_values("hour_int")
+        )
+
+        if not hourly_grp.empty:
+            # Color bars according to SLA thresholds
+            bar_colors = [
+                "#10b981" if v >= 85 else ("#f59e0b" if v >= 50 else "#ef4444")
+                for v in hourly_grp["download_mbps"]
+            ]
+
+            fig_hourly = go.Figure()
+            fig_hourly.add_trace(
+                go.Bar(
+                    x=hourly_grp["hour_label"],
+                    y=hourly_grp["download_mbps"],
+                    marker=dict(color=bar_colors, opacity=0.9),
+                    hovertemplate="<b>%{x}</b><br>Avg Download: %{y:.1f} Mbps<extra></extra>",
+                    name="Download",
+                )
+            )
+            fig_hourly.add_hline(
+                y=85.0,
+                line_dash="dash",
+                line_color="#ef4444",
+                line_width=1.2,
+                annotation_text="85 Mbps Alert",
+                annotation_position="bottom right",
+            )
+            fig_hourly.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="sans serif"),
+                margin=dict(l=10, r=10, t=20, b=10),
+                height=260,
+                xaxis=dict(showgrid=False, title=""),
+                yaxis=dict(
+                    title="Avg Mbps",
+                    rangemode="tozero",
+                    showgrid=True,
+                    gridcolor="rgba(128, 128, 128, 0.16)",
+                ),
+            )
+            st.plotly_chart(fig_hourly, use_container_width=True, config=PLOT_CONFIG)
+        else:
+            st.info("Insufficient hourly data for this selection.")
+
+    with c_vis2:
+        st.markdown("#### 🎯 SLA Speed Compliance")
+        st.caption("Percentage of check cycles meeting contract plan vs degraded periods.")
+
+        def categorize_sla(val):
+            if pd.isna(val) or val <= 0:
+                return "Critical (< 50 Mbps)"
+            elif val < 50:
+                return "Critical (< 50 Mbps)"
+            elif val < 85:
+                return "Degraded (50-85 Mbps)"
+            elif val < 95:
+                return "Good (85-95 Mbps)"
+            else:
+                return "Optimal (>= 95 Mbps)"
+
+        sla_series = df["download_mbps"].apply(categorize_sla).value_counts()
+        sla_color_map = {
+            "Optimal (>= 95 Mbps)": "#10b981",
+            "Good (85-95 Mbps)": "#0284c7",
+            "Degraded (50-85 Mbps)": "#f59e0b",
+            "Critical (< 50 Mbps)": "#ef4444",
+        }
+
+        fig_donut = go.Figure(
+            data=[
+                go.Pie(
+                    labels=sla_series.index.tolist(),
+                    values=sla_series.values.tolist(),
+                    hole=0.55,
+                    marker=dict(colors=[sla_color_map.get(k, "#64748b") for k in sla_series.index]),
+                    textinfo="percent+label",
+                    textposition="inside",
+                    insidetextorientation="horizontal",
+                    hovertemplate="<b>%{label}</b>: %{value} checks (%{percent})<extra></extra>",
+                )
+            ]
+        )
+        fig_donut.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="sans serif"),
+            margin=dict(l=10, r=10, t=20, b=10),
+            height=260,
+            showlegend=False,
+        )
+        st.plotly_chart(fig_donut, use_container_width=True, config=PLOT_CONFIG)
+
+    st.write("")
+
+    # 3. Latency & Packet Loss
     st.markdown("#### 📶 Latency & Packet Stability")
-    st.caption("Monitors router gateway ping latency and flags any dropped packets.")
+    st.caption("Router gateway ping latency in milliseconds, flagging any packet drop events.")
 
     fig_latency = go.Figure()
 
@@ -672,7 +769,6 @@ with tab_speed:
         )
     )
 
-    # Highlight packet loss events with red marker dots
     loss_events = df[df["ping_loss_percent"] > 0]
     if not loss_events.empty:
         fig_latency.add_trace(
@@ -689,7 +785,7 @@ with tab_speed:
 
     fig_latency.update_layout(
         **LAYOUT_COMMON,
-        height=260,
+        height=240,
         hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         yaxis=dict(
@@ -703,9 +799,67 @@ with tab_speed:
 
 
 with tab_outage:
-    st.markdown("#### ⚠️ Outages & Incident Timeline")
-    st.caption("Visual breakdown of all detected drops, slow periods, and power cuts.")
+    # 1. Outage Metrics & Cause Distribution
+    st.markdown("#### ⚠️ Outages & Power Cut Diagnostics")
+    st.caption("Distinguishes whether downtime was caused by power cuts (electricity) or ISP line disconnection.")
 
+    col_o1, col_o2 = st.columns([1, 1])
+
+    with col_o1:
+        st.markdown("##### 🔍 Downtime Root Cause")
+        # Categorize causes
+        cause_counts = {}
+        if not off_rows.empty:
+            cause_counts["⚡ Power Cut (PC OFF)"] = len(off_rows)
+        down_rows = df[df["network_status"] == "Totally Down"]
+        if not down_rows.empty:
+            cause_counts["🔴 ISP Line Cut (Down)"] = len(down_rows)
+        low_rows = df[df["network_status"] == "Low"]
+        if not low_rows.empty:
+            cause_counts["🟡 Bandwidth Throttled (Low)"] = len(low_rows)
+
+        if cause_counts:
+            cause_colors = {
+                "⚡ Power Cut (PC OFF)": "#475569",
+                "🔴 ISP Line Cut (Down)": "#ef4444",
+                "🟡 Bandwidth Throttled (Low)": "#f59e0b",
+            }
+            fig_cause = go.Figure(
+                data=[
+                    go.Pie(
+                        labels=list(cause_counts.keys()),
+                        values=list(cause_counts.values()),
+                        hole=0.55,
+                        marker=dict(colors=[cause_colors.get(k, "#64748b") for k in cause_counts.keys()]),
+                        textinfo="percent+label",
+                        hovertemplate="<b>%{label}</b>: %{value} events<extra></extra>",
+                    )
+                ]
+            )
+            fig_cause.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(family="sans serif"),
+                margin=dict(l=10, r=10, t=10, b=10),
+                height=220,
+                showlegend=False,
+            )
+            st.plotly_chart(fig_cause, use_container_width=True, config=PLOT_CONFIG)
+        else:
+            st.success("🎉 Zero disruptions or power cuts detected in this period!")
+
+    with col_o2:
+        st.markdown("##### ⏱️ Disruption Summary")
+        with st.container(border=True):
+            st.write(f"• **Total Recorded Disruptions:** {num_outages}")
+            st.write(f"• **Longest Disruption:** {longest_outage_str}")
+            st.write(f"• **Total Time PC was OFF (Power Cuts):** {total_off_str}")
+            st.write(f"• **Uptime Percentage:** {uptime_pct:.1f}%")
+
+    st.write("")
+
+    # 2. Timeline Status Strip
+    st.markdown("##### 📊 Status Strip Timeline")
     timeline_items = []
     prev_dt = None
 
@@ -713,7 +867,7 @@ with tab_outage:
         curr_dt = row["datetime"]
         if prev_dt is not None:
             delta_s = (curr_dt - prev_dt).total_seconds()
-            if delta_s > 420:  # Gap of > 7 minutes indicates PC off / blackout
+            if delta_s > 420:
                 gap_center = prev_dt + timedelta(seconds=delta_s / 2)
                 timeline_items.append({
                     "datetime": gap_center,
@@ -765,12 +919,12 @@ with tab_outage:
         color_discrete_map=color_map,
         category_orders={"status_label": ["Normal (Ideal)", "Low Speed", "Totally Down", "Power Cut (PC OFF)", "Blackout / Offline"]},
         hover_data={"datetime": "|%b %d, %I:%M %p", "download_mbps": ":.2f", "note": True},
-        height=220,
+        height=200,
     )
     fig_timeline.update_traces(marker=dict(size=8, symbol="square"))
     fig_timeline.update_layout(
         **LAYOUT_COMMON,
-        height=220,
+        height=200,
         yaxis=dict(
             title="",
             categoryorder="array",
@@ -782,7 +936,8 @@ with tab_outage:
     )
     st.plotly_chart(fig_timeline, use_container_width=True, config=PLOT_CONFIG)
 
-    st.markdown("#### 📋 Incident Breakdown")
+    # 3. Incident Breakdown Table
+    st.markdown("##### 📋 Recorded Incidents Detail")
     if episodes:
         ep_rows = []
         for ep in episodes:
@@ -799,14 +954,9 @@ with tab_outage:
             ep_df,
             use_container_width=True,
             hide_index=True,
-            column_config={
-                "Event Type": st.column_config.TextColumn("Event Type"),
-                "Duration": st.column_config.TextColumn("Duration"),
-                "Lowest Speed": st.column_config.TextColumn("Lowest Speed"),
-            },
         )
     else:
-        st.success("🎉 No outages or low speed events recorded in this time range! All checks were normal.")
+        st.success("🎉 No outages recorded in this period.")
 
     if not off_rows.empty:
         with st.expander(f"⚡ Detailed Power Cut Log ({len(off_rows)} events)"):
