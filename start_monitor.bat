@@ -1,23 +1,52 @@
 @echo off
-REM Change to the directory of this batch file
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
+title Network & Power Monitor
 
-REM Ensure logs folder exists
-if not exist logs mkdir logs
-
-REM Record launch event
-echo [%date% %time%] Batch script launched, waiting 60s for network... >> logs\bat_launch.log
-
-REM Wait for Windows/WiFi/Router to come up after a power cut before testing
-timeout /t 60 /nobreak >nul
-
-echo [%date% %time%] Starting network_monitor.py... >> logs\bat_launch.log
-
+chcp 65001 >nul
 set PYTHONIOENCODING=utf-8
 
-REM Run python monitor and redirect both stdout and stderr to logs/bat_output.log
+echo ======================================================
+echo       ⚡ Network and Power Speed Monitor
+echo ======================================================
+echo [info] Location: %cd%
+echo [info] Logs are saved to: logs\network_monitor.log
+echo.
+
+REM Ensure logs directory exists
+if not exist logs mkdir logs
+
+REM Record launch timestamp
+echo [%date% %time%] Batch script started >> logs\bat_launch.log
+
+REM 5 second countdown (press any key to start immediately)
+echo [info] Starting monitor in 5 seconds (press any key to start now)...
+timeout /t 5
+
+echo.
+echo [info] Launching network_monitor.py...
+echo ======================================================
+echo.
+
 if exist ".venv\Scripts\python.exe" (
-    .venv\Scripts\python.exe network_monitor.py >> logs\bat_output.log 2>&1
+    echo [info] Using virtualenv Python: .venv\Scripts\python.exe
+    ".venv\Scripts\python.exe" network_monitor.py
 ) else (
-    python network_monitor.py >> logs\bat_output.log 2>&1
+    where uv >nul 2>nul
+    if !ERRORLEVEL! EQU 0 (
+        echo [info] Using uv runner
+        uv run network_monitor.py
+    ) else (
+        echo [info] Using system Python
+        python network_monitor.py
+    )
+)
+
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo ======================================================
+    echo [ERROR] Monitor exited with error code %ERRORLEVEL%.
+    echo Please check logs\network_monitor.log for details.
+    echo ======================================================
+    pause
 )
