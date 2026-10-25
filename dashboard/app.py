@@ -550,17 +550,21 @@ tab_speed, tab_outage, tab_data = st.tabs([
     "📋 Raw Log & Export",
 ])
 
-# Plotly Common Style for Native Dark & Light Themes
+# Modern, crisp UI font stack and responsive tick format
+FONT_FAMILY = "Segoe UI, Roboto, Helvetica, Arial, sans-serif"
+x_tick_fmt = "%I:%M %p" if range_option == "Today" else "%b %d\n%I:%M %p"
+
 PLOT_CONFIG = {"responsive": True, "displayModeBar": False}
 LAYOUT_COMMON = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="sans serif"),
+    font=dict(family=FONT_FAMILY, size=12),
     margin=dict(l=10, r=10, t=30, b=10),
     xaxis=dict(
         showgrid=True,
         gridcolor="rgba(128, 128, 128, 0.16)",
-        tickformat="%b %d\n%I:%M %p",
+        tickformat=x_tick_fmt,
+        tickfont=dict(family=FONT_FAMILY, size=11),
     ),
 )
 
@@ -590,7 +594,7 @@ with tab_speed:
             name="Download",
             marker=dict(size=4),
             line=dict(color="#0284c7", width=2.5),
-            hovertemplate="<b>Download</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|%b %d, %I:%M %p}<extra></extra>",
+            hovertemplate="<b>Download</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|" + x_tick_fmt.replace("\n", " ") + "}<extra></extra>",
         )
     )
 
@@ -602,7 +606,7 @@ with tab_speed:
             mode="lines",
             name="Upload",
             line=dict(color="#8b5cf6", width=2.0),
-            hovertemplate="<b>Upload</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|%b %d, %I:%M %p}<extra></extra>",
+            hovertemplate="<b>Upload</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|" + x_tick_fmt.replace("\n", " ") + "}<extra></extra>",
         )
     )
 
@@ -614,6 +618,7 @@ with tab_speed:
         line_width=1.5,
         annotation_text="Target Plan (100 Mbps)",
         annotation_position="top left",
+        annotation_font=dict(family=FONT_FAMILY, size=11),
     )
 
     # Alert Threshold Line (85 Mbps)
@@ -624,18 +629,21 @@ with tab_speed:
         line_width=1.5,
         annotation_text="Alert Level (< 85 Mbps)",
         annotation_position="bottom left",
+        annotation_font=dict(family=FONT_FAMILY, size=11),
     )
 
     fig_speed.update_layout(
         **LAYOUT_COMMON,
         height=340,
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(family=FONT_FAMILY, size=11)),
         yaxis=dict(
             title="Speed (Mbps)",
             rangemode="tozero",
             showgrid=True,
             gridcolor="rgba(128, 128, 128, 0.16)",
+            tickfont=dict(family=FONT_FAMILY, size=11),
+            title_font=dict(family=FONT_FAMILY, size=12),
         ),
     )
     st.plotly_chart(fig_speed, use_container_width=True, config=PLOT_CONFIG)
@@ -687,15 +695,17 @@ with tab_speed:
             fig_hourly.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(family="sans serif"),
+                font=dict(family=FONT_FAMILY, size=12),
                 margin=dict(l=10, r=10, t=20, b=10),
                 height=260,
-                xaxis=dict(showgrid=False, title=""),
+                xaxis=dict(showgrid=False, title="", tickfont=dict(family=FONT_FAMILY, size=11)),
                 yaxis=dict(
                     title="Avg Mbps",
                     rangemode="tozero",
                     showgrid=True,
                     gridcolor="rgba(128, 128, 128, 0.16)",
+                    tickfont=dict(family=FONT_FAMILY, size=11),
+                    title_font=dict(family=FONT_FAMILY, size=12),
                 ),
             )
             st.plotly_chart(fig_hourly, use_container_width=True, config=PLOT_CONFIG)
@@ -736,6 +746,7 @@ with tab_speed:
                     textinfo="percent+label",
                     textposition="inside",
                     insidetextorientation="horizontal",
+                    textfont=dict(family=FONT_FAMILY, size=11),
                     hovertemplate="<b>%{label}</b>: %{value} checks (%{percent})<extra></extra>",
                 )
             ]
@@ -743,7 +754,7 @@ with tab_speed:
         fig_donut.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(family="sans serif"),
+            font=dict(family=FONT_FAMILY, size=12),
             margin=dict(l=10, r=10, t=20, b=10),
             height=260,
             showlegend=False,
@@ -787,12 +798,14 @@ with tab_speed:
         **LAYOUT_COMMON,
         height=240,
         hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(family=FONT_FAMILY, size=11)),
         yaxis=dict(
             title="Ping Latency (ms)",
             rangemode="tozero",
             showgrid=True,
             gridcolor="rgba(128, 128, 128, 0.16)",
+            tickfont=dict(family=FONT_FAMILY, size=11),
+            title_font=dict(family=FONT_FAMILY, size=12),
         ),
     )
     st.plotly_chart(fig_latency, use_container_width=True, config=PLOT_CONFIG)
@@ -832,6 +845,7 @@ with tab_outage:
                         hole=0.55,
                         marker=dict(colors=[cause_colors.get(k, "#64748b") for k in cause_counts.keys()]),
                         textinfo="percent+label",
+                        textfont=dict(family=FONT_FAMILY, size=11),
                         hovertemplate="<b>%{label}</b>: %{value} events<extra></extra>",
                     )
                 ]
@@ -839,7 +853,7 @@ with tab_outage:
             fig_cause.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(family="sans serif"),
+                font=dict(family=FONT_FAMILY, size=12),
                 margin=dict(l=10, r=10, t=10, b=10),
                 height=220,
                 showlegend=False,
@@ -925,14 +939,16 @@ with tab_outage:
     fig_timeline.update_layout(
         **LAYOUT_COMMON,
         height=200,
+        font=dict(family=FONT_FAMILY, size=11),
         yaxis=dict(
             title="",
             categoryorder="array",
             categoryarray=["Blackout / Offline", "Power Cut (PC OFF)", "Totally Down", "Low Speed", "Normal (Ideal)"],
             showgrid=True,
             gridcolor="rgba(128, 128, 128, 0.16)",
+            tickfont=dict(family=FONT_FAMILY, size=11),
         ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(family=FONT_FAMILY, size=11)),
     )
     st.plotly_chart(fig_timeline, use_container_width=True, config=PLOT_CONFIG)
 
