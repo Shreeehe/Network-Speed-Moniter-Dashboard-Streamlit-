@@ -939,7 +939,6 @@ with tab_outage:
     fig_timeline.update_layout(
         **LAYOUT_COMMON,
         height=200,
-        font=dict(family=FONT_FAMILY, size=11),
         yaxis=dict(
             title="",
             categoryorder="array",
