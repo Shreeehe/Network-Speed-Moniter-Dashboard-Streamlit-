@@ -578,10 +578,6 @@ LAYOUT_COMMON = dict(
         gridcolor="rgba(128, 128, 128, 0.16)",
         tickformat="%b %d\n%I:%M %p",
     ),
-    yaxis=dict(
-        showgrid=True,
-        gridcolor="rgba(128, 128, 128, 0.16)",
-    ),
 )
 
 
