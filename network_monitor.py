@@ -69,6 +69,35 @@ NOT_APPLICABLE = "N/A"
 # Exit codes (start_monitor.bat reacts to these)
 EXIT_OK, EXIT_CRASH, EXIT_BAD_CONFIG, EXIT_ALREADY_RUNNING = 0, 1, 2, 3
 
+
+def configure_windows_os_resilience() -> None:
+    """On Windows:
+    1. Prevents idle system sleep via SetThreadExecutionState while the monitor is active.
+    2. Disables Console QuickEdit Mode so clicking inside the console window does not freeze Python.
+    """
+    if not IS_WINDOWS:
+        return
+    try:
+        import ctypes
+        # ES_CONTINUOUS (0x80000000) | ES_SYSTEM_REQUIRED (0x00000001)
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000001)
+        logging.info("Windows sleep prevention activated (ES_SYSTEM_REQUIRED).")
+    except Exception as exc:
+        logging.debug("Could not set Windows execution state: %s", exc)
+
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        h_stdin = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        mode = ctypes.c_ulong()
+        if kernel32.GetConsoleMode(h_stdin, ctypes.byref(mode)):
+            # 0x0040 = ENABLE_QUICK_EDIT_MODE, 0x0080 = ENABLE_EXTENDED_FLAGS
+            new_mode = (mode.value & ~0x0040) | 0x0080
+            kernel32.SetConsoleMode(h_stdin, new_mode)
+            logging.info("Windows console QuickEdit mode disabled (click-to-freeze prevented).")
+    except Exception as exc:
+        logging.debug("Could not adjust console QuickEdit mode: %s", exc)
+
 CSV_COLUMNS = [
     "timestamp",
     "computer_status",
@@ -1796,6 +1825,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Run:  python network_monitor.py --check")
         return EXIT_BAD_CONFIG
     setup_logging(settings)
+    configure_windows_os_resilience()
     for message in warnings:
         logging.warning("Setting: %s", message)
 
@@ -1848,6 +1878,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     finally:
         monitor.shutdown(graceful=graceful)
         lock.release()
+        if IS_WINDOWS:
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+            except Exception:
+                pass
         logging.info("Monitor stopped.")
 
 
