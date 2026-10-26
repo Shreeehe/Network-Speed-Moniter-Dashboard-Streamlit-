@@ -1,6 +1,6 @@
 @echo off
 title Stop Network Monitor
-chcp 65001 >nul
+chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 
 echo ======================================================
