@@ -468,8 +468,9 @@ st.markdown(
 # 3. KPI Metrics (Using Default Streamlit Elements for Native Theme & Mobile)
 # ----------------------------------------------------------------------------
 total_checks = len(df)
-online_checks = (df["computer_status"] == "ON") & (~df["network_status"].isin(["Totally Down", "Low"]))
-uptime_pct = (online_checks.sum() / total_checks * 100) if total_checks > 0 else 0.0
+online_mask = (df["computer_status"] == "ON") & (~df["network_status"].isin(["Totally Down", "Low"]))
+ideal_checks = int(online_mask.sum())
+uptime_pct = (ideal_checks / total_checks * 100) if total_checks > 0 else 0.0
 
 raw_avg_dl = df["download_mbps"].dropna().mean() if "download_mbps" in df.columns else 0.0
 raw_avg_ul = df["upload_mbps"].dropna().mean() if "upload_mbps" in df.columns else 0.0
