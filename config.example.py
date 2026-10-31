@@ -40,6 +40,9 @@ OFF_GAP_SECONDS = 120
 
 SPEEDTEST_EXE = os.path.join(BASE_DIR, "speedtest.exe")
 SPEEDTEST_TIMEOUT_SECONDS = 120
+# Run full bandwidth test every 15 minutes (900s) to keep within Ookla free tier quotas.
+# Ping / power checks still run every CHECK_INTERVAL_SECONDS (300s).
+SPEEDTEST_INTERVAL_SECONDS = 900
 
 
 # ==============================

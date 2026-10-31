@@ -30,6 +30,7 @@ import html
 import json
 import logging
 import logging.handlers
+import math
 import os
 import re
 import shutil
@@ -250,6 +251,7 @@ class Settings:
         # --- speedtest
         self.speedtest_exe = str(get("SPEEDTEST_EXE", os.path.join(base, "speedtest.exe")))
         self.speedtest_timeout = number("SPEEDTEST_TIMEOUT_SECONDS", 120, int)
+        self.speedtest_interval = number("SPEEDTEST_INTERVAL_SECONDS", 900, int)
 
         # --- e-mail
         self.email_enabled = bool(get("EMAIL_ENABLED", True))
@@ -684,6 +686,11 @@ class SpeedtestError(Exception):
     pass
 
 
+class OoklaRateLimitError(SpeedtestError):
+    """Raised when Ookla returns HTTP 429 / Limit reached (Too many requests)."""
+    pass
+
+
 def find_speedtest(settings: Settings) -> str:
     candidates = [settings.speedtest_exe, "speedtest.exe", os.path.join(BASE_DIR, "speedtest.exe")]
     for candidate in candidates:
@@ -733,6 +740,7 @@ def parse_speedtest_json(text: str) -> Dict[str, Any]:
         "idle_latency": float(latency) if latency is not None else None,
         "packet_loss": float(packet_loss) if packet_loss is not None else None,
         "server": server_text,
+        "server_id": server.get("id"),
         "result_url": (result.get("result") or {}).get("url") or "",
     }
 
@@ -748,29 +756,46 @@ def parse_speedtest_text(text: str) -> Dict[str, Any]:
             return None
         return float(found.group(1))
 
-    server = re.search(r"Server:\s*(.+?)(?:\s+\(id:\s*\d+\))?\s*$", text, re.IGNORECASE | re.MULTILINE)
+    server = re.search(r"Server:\s*(.+?)(?:\s+\(id:\s*(\d+)\))?\s*$", text, re.IGNORECASE | re.MULTILINE)
     url = re.search(r"Result URL:\s*(https?://\S+)", text, re.IGNORECASE)
+    server_id = server.group(2) if (server and server.lastindex and server.lastindex >= 2) else None
     return {
         "download": number(r"Download:\s*([0-9]+(?:\.[0-9]+)?)\s*Mbps"),
         "upload": number(r"Upload:\s*([0-9]+(?:\.[0-9]+)?)\s*Mbps"),
         "idle_latency": number(r"Idle Latency:\s*([0-9]+(?:\.[0-9]+)?)\s*ms", required=False),
         "packet_loss": number(r"Packet Loss:\s*([0-9]+(?:\.[0-9]+)?)\s*%", required=False),
         "server": server.group(1).strip() if server else "",
+        "server_id": server_id,
         "result_url": url.group(1) if url else "",
     }
 
 
-def run_speedtest(settings: Settings) -> Dict[str, Any]:
+def run_speedtest(settings: Settings, server_id: Optional[str] = None) -> Dict[str, Any]:
     exe = find_speedtest(settings)
-    logging.info("Running the Ookla speed test...")
+    cmd = [exe, "--accept-license", "--accept-gdpr", "--format=json"]
+    if server_id:
+        cmd.extend(["--server-id", str(server_id)])
+    logging.info("Running Ookla speed test (server: %s)...", server_id or "auto-detect")
     completed = subprocess.run(
-        [exe, "--accept-license", "--accept-gdpr", "--format=json"],
+        cmd,
         capture_output=True,
         text=True,
         timeout=settings.speedtest_timeout,
         creationflags=NO_WINDOW,
     )
     output = (completed.stdout or "") + "\n" + (completed.stderr or "")
+
+    # Check for Ookla Rate Limit (HTTP 429 / exit code 429 / 173 / "Limit reached")
+    if completed.returncode in (429, 173) or "Limit reached" in output or "Too many requests" in output:
+        raise OoklaRateLimitError(
+            f"Ookla rate limit reached (exit {completed.returncode}): Too many requests"
+        )
+
+    # If test with a fixed server_id failed with another error, retry once with auto-detect
+    if completed.returncode != 0 and server_id:
+        logging.warning("Server %s failed; retrying with auto-detect...", server_id)
+        return run_speedtest(settings, server_id=None)
+
     try:
         return parse_speedtest_json(output)
     except SpeedtestError as json_error:
@@ -1514,10 +1539,14 @@ class Monitor:
             client = SupabaseClient(settings.supabase_url, settings.supabase_key, settings.supabase_table)
             self.uploader = Uploader(settings, self.upload_queue, client, self.stop_event)
         self.engine = AlertEngine(settings, self.state, self.notifier)
+        self.cached_server_id: Optional[str] = self.state.get("cached_server_id")
+        self.ookla_cooldown_until: float = 0.0
+        self.last_speed_result: Optional[Dict[str, Any]] = None
+        self.last_speedtest_time: float = 0.0
         # replaceable pieces (tests replace these)
-        self.ping_fn: Callable[[str, int], Dict[str, Any]] = run_ping
+        self.ping_fn: Callable[..., Dict[str, Any]] = run_ping
         self.internet_fn: Callable[[List[str]], Dict[str, Any]] = check_internet
-        self.speedtest_fn: Callable[[Settings], Dict[str, Any]] = run_speedtest
+        self.speedtest_fn: Callable[..., Dict[str, Any]] = run_speedtest
 
     # -- recording ------------------------------------------------------------
     def record_row(self, row: Dict[str, Any]) -> None:
@@ -1597,29 +1626,74 @@ class Monitor:
         else:
             if not gateway_ok:
                 add_note(f"Router {self.s.ping_target} did not answer ping, but the internet works")
-            try:
-                result = self.speedtest_fn(self.s)
-                low = result["download"] < self.s.alert_threshold
-                if self.s.alert_threshold_upload is not None and result["upload"] < self.s.alert_threshold_upload:
-                    low = True
-                    add_note(f"Upload below {self.s.alert_threshold_upload:.0f} Mbps")
-                row.update(
-                    download_mbps=f"{result['download']:.2f}",
-                    upload_mbps=f"{result['upload']:.2f}",
-                    idle_latency_ms="" if result["idle_latency"] is None else f"{result['idle_latency']:.2f}",
-                    speedtest_packet_loss_percent=(
-                        "" if result["packet_loss"] is None else f"{result['packet_loss']:.2f}"
-                    ),
-                    server=result["server"],
-                    result_url=result["result_url"],
-                    network_status=LOW if low else IDEAL,
-                )
-            except subprocess.TimeoutExpired:
-                row["network_status"] = TEST_FAILED
-                add_note(f"Speed test timed out after {self.s.speedtest_timeout}s")
-            except Exception as exc:  # the test failed, but the internet answers ping
-                row["network_status"] = TEST_FAILED
-                add_note(f"Speed test failed: {short(exc, 120)}")
+            
+            now_ts = time.time()
+            # 1. Check if we are currently in an Ookla rate limit cooldown period
+            if now_ts < self.ookla_cooldown_until:
+                remaining_min = int(math.ceil((self.ookla_cooldown_until - now_ts) / 60))
+                logging.info("Internet is UP. Ookla speed test in cooldown (%d min remaining)...", remaining_min)
+                row["network_status"] = IDEAL
+                if self.last_speed_result:
+                    row["download_mbps"] = f"{self.last_speed_result['download']:.2f}"
+                    row["upload_mbps"] = f"{self.last_speed_result['upload']:.2f}"
+                    row["idle_latency_ms"] = "" if self.last_speed_result["idle_latency"] is None else f"{self.last_speed_result['idle_latency']:.2f}"
+                    row["server"] = self.last_speed_result.get("server", "")
+                    add_note(f"Internet Online | Speed test cooling off ({remaining_min}m remaining)")
+                else:
+                    add_note(f"Internet Online | Speed test rate-limited (cooling off for {remaining_min}m)")
+            
+            # 2. Check if we should skip speed test this cycle based on speedtest_interval
+            elif (self.last_speedtest_time > 0 and 
+                  (now_ts - self.last_speedtest_time) < self.s.speedtest_interval and
+                  gateway["avg_ms"] is not None and gateway["avg_ms"] < 80.0):
+                row["network_status"] = IDEAL
+                if self.last_speed_result:
+                    row["download_mbps"] = f"{self.last_speed_result['download']:.2f}"
+                    row["upload_mbps"] = f"{self.last_speed_result['upload']:.2f}"
+                    row["idle_latency_ms"] = "" if self.last_speed_result["idle_latency"] is None else f"{self.last_speed_result['idle_latency']:.2f}"
+                    row["server"] = self.last_speed_result.get("server", "")
+                    add_note("Ping check (speed test cached)")
+            else:
+                try:
+                    result = self.speedtest_fn(self.s, server_id=self.cached_server_id)
+                    self.last_speedtest_time = now_ts
+                    srv_id = result.get("server_id")
+                    if srv_id:
+                        self.cached_server_id = str(srv_id)
+                        self.state["cached_server_id"] = str(srv_id)
+                        save_state(self.s.state_file, self.state)
+                    self.last_speed_result = result
+                    low = result["download"] < self.s.alert_threshold
+                    if self.s.alert_threshold_upload is not None and result["upload"] < self.s.alert_threshold_upload:
+                        low = True
+                        add_note(f"Upload below {self.s.alert_threshold_upload:.0f} Mbps")
+                    row.update(
+                        download_mbps=f"{result['download']:.2f}",
+                        upload_mbps=f"{result['upload']:.2f}",
+                        idle_latency_ms="" if result["idle_latency"] is None else f"{result['idle_latency']:.2f}",
+                        speedtest_packet_loss_percent=(
+                            "" if result["packet_loss"] is None else f"{result['packet_loss']:.2f}"
+                        ),
+                        server=result["server"],
+                        result_url=result["result_url"],
+                        network_status=LOW if low else IDEAL,
+                    )
+                except OoklaRateLimitError:
+                    self.ookla_cooldown_until = now_ts + 1800  # 30-minute cooldown
+                    logging.warning("Ookla rate limit reached! Activating 30-minute cooldown on speed tests to allow IP to unblock.")
+                    row["network_status"] = IDEAL  # Internet itself is reachable and working!
+                    if self.last_speed_result:
+                        row["download_mbps"] = f"{self.last_speed_result['download']:.2f}"
+                        row["upload_mbps"] = f"{self.last_speed_result['upload']:.2f}"
+                        row["idle_latency_ms"] = "" if self.last_speed_result["idle_latency"] is None else f"{self.last_speed_result['idle_latency']:.2f}"
+                        row["server"] = self.last_speed_result.get("server", "")
+                    add_note("Internet Online | Ookla rate limit (429) - speed tests paused for 30m to unblock IP")
+                except subprocess.TimeoutExpired:
+                    row["network_status"] = TEST_FAILED
+                    add_note(f"Speed test timed out after {self.s.speedtest_timeout}s")
+                except Exception as exc:  # the test failed, but the internet answers ping
+                    row["network_status"] = TEST_FAILED
+                    add_note(f"Speed test failed: {short(exc, 120)}")
 
         self.record_row(row)
         logging.info(

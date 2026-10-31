@@ -189,7 +189,7 @@ def compute_outage_episodes(df):
         ts = row["datetime"]
         dl = row.get("download_mbps", 0.0)
 
-        is_problem = (status != "Ideal") or (pc_status == "OFF")
+        is_problem = (status in ("Low", "Totally Down")) or (pc_status == "OFF")
 
         if is_problem:
             ep_type = "Power Cut (PC OFF)" if pc_status == "OFF" else status
@@ -406,6 +406,14 @@ ul_speed = latest_row.get("upload_mbps", 0.0)
 dl_speed = 0.0 if (dl_speed is None or math.isnan(dl_speed)) else float(dl_speed)
 ul_speed = 0.0 if (ul_speed is None or math.isnan(ul_speed)) else float(ul_speed)
 
+# If latest cycle had no speed (e.g. rate-limit cooldown or ping check), look for last measured speed
+if dl_speed == 0.0:
+    valid_dl = df[df["download_mbps"].notna() & (df["download_mbps"] > 0)]
+    if not valid_dl.empty:
+        latest_valid = valid_dl.iloc[-1]
+        dl_speed = float(latest_valid["download_mbps"])
+        ul_speed = float(latest_valid.get("upload_mbps", 0.0))
+
 if computer_status == "OFF":
     banner_class = "banner-off"
     status_icon = "⚫"
@@ -418,6 +426,10 @@ elif current_net_status == "Totally Down":
     banner_class = "banner-down"
     status_icon = "🔴"
     status_label = "TOTALLY DOWN"
+elif current_net_status == "Test Failed":
+    banner_class = "banner-ideal"
+    status_icon = "🟢"
+    status_label = "NORMAL (SPEED TEST RATE-LIMITED)"
 else:
     banner_class = "banner-ideal"
     status_icon = "🟢"
@@ -456,8 +468,8 @@ st.markdown(
 # 3. KPI Metrics (Using Default Streamlit Elements for Native Theme & Mobile)
 # ----------------------------------------------------------------------------
 total_checks = len(df)
-ideal_checks = (df["network_status"] == "Ideal").sum()
-uptime_pct = (ideal_checks / total_checks * 100) if total_checks > 0 else 0.0
+online_checks = (df["computer_status"] == "ON") & (~df["network_status"].isin(["Totally Down", "Low"]))
+uptime_pct = (online_checks.sum() / total_checks * 100) if total_checks > 0 else 0.0
 
 raw_avg_dl = df["download_mbps"].dropna().mean() if "download_mbps" in df.columns else 0.0
 raw_avg_ul = df["upload_mbps"].dropna().mean() if "upload_mbps" in df.columns else 0.0
@@ -592,6 +604,7 @@ with tab_speed:
             y=df["download_mbps"],
             mode="lines+markers",
             name="Download",
+            connectgaps=True,
             marker=dict(size=4),
             line=dict(color="#0284c7", width=2.5),
             hovertemplate="<b>Download</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|" + x_tick_fmt.replace("\n", " ") + "}<extra></extra>",
@@ -605,6 +618,7 @@ with tab_speed:
             y=df["upload_mbps"],
             mode="lines",
             name="Upload",
+            connectgaps=True,
             line=dict(color="#8b5cf6", width=2.0),
             hovertemplate="<b>Upload</b>: %{y:.2f} Mbps<br><b>Time</b>: %{x|" + x_tick_fmt.replace("\n", " ") + "}<extra></extra>",
         )
